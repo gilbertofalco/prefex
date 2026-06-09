@@ -20,35 +20,61 @@ function profileFromUser(user: User): Omit<Profile, 'created_at' | 'avatar_color
   }
 }
 
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function fetchProfile(userId: string): Promise<Profile | null> {
+  const supabase = getSupabase()
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Erro ao buscar perfil:', error.message)
+    return null
+  }
+
+  return data as Profile | null
+}
+
 export async function fetchOrCreateProfile(user: User): Promise<Profile | null> {
   const supabase = getSupabase()
   if (!supabase) return null
 
-  const { data: existing, error: fetchError } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (fetchError) {
-    console.error('Erro ao buscar perfil:', fetchError.message)
+  // Aguarda o trigger do Supabase criar o perfil (até 3 tentativas)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const existing = await fetchProfile(user.id)
+    if (existing) return existing
+    if (attempt < 2) await sleep(400)
   }
-
-  if (existing) return existing as Profile
 
   const row = profileFromUser(user)
   const { data: created, error: insertError } = await supabase
     .from('profiles')
-    .upsert(row)
+    .insert(row)
     .select()
     .maybeSingle()
 
+  if (!insertError && created) return created as Profile
+
   if (insertError) {
     console.error('Erro ao criar perfil:', insertError.message)
-    return null
+    // Conflito = perfil já existe; tenta buscar de novo
+    if (insertError.code === '23505') {
+      return fetchProfile(user.id)
+    }
   }
 
-  return created as Profile | null
+  return fetchProfile(user.id)
+}
+
+export function profileCreationErrorHint(): string {
+  return 'Execute o arquivo supabase/migrations/003_fix_profile_trigger.sql no SQL Editor do Supabase.'
 }
 
 export function translateAuthError(message: string): string {

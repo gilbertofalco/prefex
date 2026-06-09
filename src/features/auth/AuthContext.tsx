@@ -8,7 +8,7 @@ import {
 } from '../../lib/demoMode'
 import type { Profile } from '../../types/database'
 import type { User } from '@supabase/supabase-js'
-import { fetchOrCreateProfile, translateAuthError } from '../../lib/ensureProfile'
+import { fetchOrCreateProfile, profileCreationErrorHint, translateAuthError } from '../../lib/ensureProfile'
 
 interface AuthContextValue {
   user: User | { id: string; email: string } | null
@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const p = await fetchOrCreateProfile(data.user)
       setUser(data.user)
       setProfile(p)
-      if (!p) return { error: 'Login ok, mas o perfil não foi criado. Rode a migration 002 no Supabase SQL Editor.' }
+      if (!p) return { error: `Login ok, mas o perfil não foi criado. ${profileCreationErrorHint()}` }
     }
     await refreshProfile()
     return { error: null }
@@ -131,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user)
       const p = await fetchOrCreateProfile(data.user)
       setProfile(p)
-      if (!p) return { error: 'Conta criada, mas o perfil falhou. Rode a migration 002 no Supabase SQL Editor.' }
+      if (!p) return { error: `Conta criada, mas o perfil falhou. ${profileCreationErrorHint()}` }
     }
     return { error: null }
   }, [refreshProfile])
