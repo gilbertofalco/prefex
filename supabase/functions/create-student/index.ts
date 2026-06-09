@@ -72,12 +72,22 @@ Deno.serve(async (req) => {
       })
     }
 
-    await admin.from('profiles').upsert({
-      id: data.user.id,
-      role: 'student',
-      full_name: fullName,
-      professional_id: user.id,
-    })
+    const { error: profileError } = await admin.from('profiles').upsert(
+      {
+        id: data.user.id,
+        role: 'student',
+        full_name: fullName,
+        professional_id: user.id,
+      },
+      { onConflict: 'id' },
+    )
+
+    if (profileError) {
+      return new Response(JSON.stringify({ error: profileError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     return new Response(JSON.stringify({ userId: data.user.id }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

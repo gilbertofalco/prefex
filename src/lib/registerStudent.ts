@@ -21,7 +21,7 @@ async function createStudentViaEdgeFunction(
   email: string,
   password: string,
   fullName: string,
-): Promise<{ ok: boolean; error?: string; unavailable?: boolean }> {
+): Promise<{ ok: boolean; error?: string; unavailable?: boolean; userId?: string }> {
   if (!supabaseUrl || !supabaseKey) return { ok: false, unavailable: true }
 
   try {
@@ -37,9 +37,17 @@ async function createStudentViaEdgeFunction(
 
     if (res.status === 404) return { ok: false, unavailable: true }
 
-    const body = (await res.json()) as { error?: string; userId?: string }
-    if (!res.ok) return { ok: false, error: body.error ?? 'Erro ao criar aluno' }
-    return { ok: true }
+    let body: { error?: string; userId?: string } = {}
+    try {
+      body = (await res.json()) as { error?: string; userId?: string }
+    } catch {
+      return { ok: false, error: `Erro no servidor (${res.status}). Tente novamente.` }
+    }
+
+    if (!res.ok) {
+      return { ok: false, error: translateAuthError(body.error ?? 'Erro ao criar aluno') }
+    }
+    return { ok: true, userId: body.userId }
   } catch {
     return { ok: false, unavailable: true }
   }
@@ -113,6 +121,10 @@ export async function registerStudentInSupabase(
   )
 
   if (edge.ok) {
+    if (edge.userId) {
+      const profileError = await ensureStudentProfile(edge.userId, fullName, professionalProfile.id)
+      if (profileError) return { error: profileError }
+    }
     return {
       error: null,
       restoreUser: professionalUser,
