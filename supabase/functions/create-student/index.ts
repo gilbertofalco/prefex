@@ -38,11 +38,13 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: prof } = await userClient
+    const admin = createClient(supabaseUrl, serviceKey)
+
+    const { data: prof } = await admin
       .from('profiles')
       .select('role')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
     if (prof?.role !== 'professional') {
       return new Response(JSON.stringify({ error: 'Apenas profissionais podem cadastrar alunos' }), {
@@ -53,7 +55,6 @@ Deno.serve(async (req) => {
 
     const { email, password, fullName } = await req.json()
 
-    const admin = createClient(supabaseUrl, serviceKey)
     const { data, error } = await admin.auth.admin.createUser({
       email,
       password,

@@ -18,6 +18,7 @@ export function StudentsPage() {
   const { profile } = useAuth()
   const [students, setStudents] = useState<StudentWithStats[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const loadStudents = useCallback(async () => {
     if (!profile) return
@@ -35,11 +36,18 @@ export function StudentsPage() {
       return
     }
 
-    const { data: studentProfiles } = await supabase
+    const { data: studentProfiles, error: studentsError } = await supabase
       .from('profiles')
       .select('*')
       .eq('professional_id', profile.id)
       .eq('role', 'student')
+
+    if (studentsError) {
+      setLoadError(studentsError.message)
+      setStudents([])
+      setLoading(false)
+      return
+    }
 
     if (!studentProfiles) {
       setLoading(false)
@@ -84,6 +92,12 @@ export function StudentsPage() {
   return (
     <div>
       <h2 className="text-2xl font-bold text-slate-900">Alunos</h2>
+
+      {loadError && (
+        <p className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-red-700" role="alert">
+          Erro ao carregar alunos: {loadError}
+        </p>
+      )}
 
       {students.length === 0 ? (
         <p className="mt-4 text-lg text-slate-600">Nenhum aluno cadastrado ainda.</p>
