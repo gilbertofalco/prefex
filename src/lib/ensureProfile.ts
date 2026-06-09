@@ -42,16 +42,34 @@ async function fetchProfile(userId: string): Promise<Profile | null> {
   return data as Profile | null
 }
 
+async function ensureProfileViaRpc(): Promise<Profile | null> {
+  const supabase = getSupabase()
+  if (!supabase) return null
+
+  const { data, error } = await supabase.rpc('ensure_user_profile')
+
+  if (error) {
+    console.error('RPC ensure_user_profile falhou:', error.message)
+    return null
+  }
+
+  const rows = data as Profile[] | Profile | null
+  if (Array.isArray(rows)) return rows[0] ?? null
+  return (rows as Profile | null) ?? null
+}
+
 export async function fetchOrCreateProfile(user: User): Promise<Profile | null> {
   const supabase = getSupabase()
   if (!supabase) return null
 
-  // Aguarda o trigger do Supabase criar o perfil (até 3 tentativas)
   for (let attempt = 0; attempt < 3; attempt++) {
     const existing = await fetchProfile(user.id)
     if (existing) return existing
-    if (attempt < 2) await sleep(400)
+    if (attempt < 2) await sleep(300)
   }
+
+  const viaRpc = await ensureProfileViaRpc()
+  if (viaRpc) return viaRpc
 
   const row = profileFromUser(user)
   const { data: created, error: insertError } = await supabase
@@ -63,8 +81,7 @@ export async function fetchOrCreateProfile(user: User): Promise<Profile | null> 
   if (!insertError && created) return created as Profile
 
   if (insertError) {
-    console.error('Erro ao criar perfil:', insertError.message)
-    // Conflito = perfil já existe; tenta buscar de novo
+    console.error('Erro ao criar perfil:', insertError.message, insertError.code)
     if (insertError.code === '23505') {
       return fetchProfile(user.id)
     }
@@ -74,16 +91,16 @@ export async function fetchOrCreateProfile(user: User): Promise<Profile | null> 
 }
 
 export function profileCreationErrorHint(): string {
-  return 'Execute o arquivo supabase/migrations/003_fix_profile_trigger.sql no SQL Editor do Supabase.'
+  return 'Execute supabase/migrations/004_ensure_user_profile_rpc.sql no SQL Editor do Supabase.'
 }
 
 export function translateAuthError(message: string): string {
   const lower = message.toLowerCase()
   if (lower.includes('invalid login credentials')) {
-    return 'E-mail ou senha incorretos. Cadastre-se primeiro em "Criar conta profissional".'
+    return 'E-mail ou senha incorretos. Se esqueceu a senha, redefina no Supabase (Authentication → Users).'
   }
   if (lower.includes('email not confirmed')) {
-    return 'E-mail não confirmado. Verifique sua caixa de entrada ou desative "Confirm email" no Supabase.'
+    return 'E-mail não confirmado. Desative "Confirm email" em Authentication → Providers → Email.'
   }
   if (lower.includes('user already registered')) {
     return 'Este e-mail já está cadastrado. Tente fazer login.'

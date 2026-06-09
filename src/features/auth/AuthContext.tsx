@@ -15,7 +15,7 @@ interface AuthContextValue {
   profile: Profile | null
   loading: boolean
   isDemoMode: boolean
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  signIn: (email: string, password: string) => Promise<{ error: string | null; role?: Profile['role'] }>
   signUpProfessional: (
     email: string,
     password: string,
@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!demoUser) return { error: 'E-mail ou senha incorretos' }
       setUser({ id: demoUser.id, email: demoUser.email })
       setProfile(demoUser.profile)
-      return { error: null }
+      return { error: null, role: demoUser.profile.role }
     }
 
     const supabase = getSupabase()
@@ -103,9 +103,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user)
       setProfile(p)
       if (!p) return { error: `Login ok, mas o perfil não foi criado. ${profileCreationErrorHint()}` }
+      return { error: null, role: p.role }
     }
-    await refreshProfile()
-    return { error: null }
+    return { error: 'Não foi possível completar o login.' }
   }, [refreshProfile])
 
   const signUpProfessional = useCallback(async (email: string, password: string, fullName: string) => {

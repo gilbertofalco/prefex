@@ -34,13 +34,13 @@ export function LoginPage() {
     e.preventDefault()
     setError(null)
     setLoading(true)
-    const { error: signInError } = await signIn(email, password)
+    const { error: signInError, role } = await signIn(email, password)
     setLoading(false)
     if (signInError) {
       setError(signInError)
       return
     }
-    navigate(tab === 'professional' ? '/professional' : '/student')
+    navigate(role === 'professional' ? '/professional' : '/student')
   }
 
   const fillDemo = (type: Tab) => {
