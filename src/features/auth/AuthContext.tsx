@@ -5,6 +5,7 @@ import {
   demoLogout,
   demoGetSession,
   demoRegisterProfessional,
+  demoRegisterStudent,
 } from '../../lib/demoMode'
 import type { Profile } from '../../types/database'
 import type { User } from '@supabase/supabase-js'
@@ -23,6 +24,11 @@ interface AuthContextValue {
   ) => Promise<{ error: string | null; pendingConfirmation?: boolean }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
+  registerStudent: (
+    email: string,
+    password: string,
+    fullName: string,
+  ) => Promise<{ error: string | null }>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -151,6 +157,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null }
   }, [refreshProfile])
 
+  const registerStudent = useCallback(
+    async (email: string, password: string, fullName: string) => {
+      if (!profile || profile.role !== 'professional') {
+        return { error: 'Apenas profissionais podem cadastrar alunos.' }
+      }
+
+      if (isDemoMode) {
+        try {
+          demoRegisterStudent(profile.id, email, password, fullName)
+          return { error: null }
+        } catch (e) {
+          return { error: e instanceof Error ? e.message : 'Erro ao cadastrar aluno' }
+        }
+      }
+
+      const supabase = getSupabase()
+      if (!supabase) return { error: 'Supabase não configurado' }
+
+      const {
+        data: { session: professionalSession },
+      } = await supabase.auth.getSession()
+      if (!professionalSession) {
+        return { error: 'Sessão expirada. Faça login novamente como profissional.' }
+      }
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            role: 'student',
+            full_name: fullName,
+            professional_id: profile.id,
+          },
+        },
+      })
+
+      // signUp troca a sessão para o aluno — restaura o profissional imediatamente
+      const { error: restoreError } = await supabase.auth.setSession({
+        access_token: professionalSession.access_token,
+        refresh_token: professionalSession.refresh_token,
+      })
+
+      if (restoreError) {
+        return {
+          error: 'Aluno pode ter sido criado, mas sua sessão foi perdida. Faça login como profissional.',
+        }
+      }
+
+      await refreshProfile()
+
+      if (signUpError) return { error: translateAuthError(signUpError.message) }
+      if (!data.user) return { error: 'Não foi possível criar o aluno.' }
+
+      // Garante perfil do aluno (trigger pode já ter criado)
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        role: 'student',
+        full_name: fullName,
+        professional_id: profile.id,
+      })
+
+      return { error: null }
+    },
+    [profile, refreshProfile],
+  )
+
   const signOut = useCallback(async () => {
     if (isDemoMode) {
       demoLogout()
@@ -174,8 +247,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUpProfessional,
       signOut,
       refreshProfile,
+      registerStudent,
     }),
-    [user, profile, loading, signIn, signUpProfessional, signOut, refreshProfile],
+    [user, profile, loading, signIn, signUpProfessional, signOut, refreshProfile, registerStudent],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

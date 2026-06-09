@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { isDemoMode, getSupabase } from '../../lib/supabase'
-import { demoRegisterStudent } from '../../lib/demoMode'
 
 export function RegisterStudentPage() {
-  const { profile } = useAuth()
+  const { registerStudent } = useAuth()
   const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -16,59 +14,18 @@ export function RegisterStudentPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!profile) return
     setError(null)
     setLoading(true)
 
-    if (isDemoMode) {
-      try {
-        demoRegisterStudent(profile.id, email, password, fullName)
-        setSuccess(true)
-        setLoading(false)
-        return
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro ao cadastrar')
-        setLoading(false)
-        return
-      }
-    }
+    const { error: registerError } = await registerStudent(email, password, fullName)
+    setLoading(false)
 
-    const supabase = getSupabase()
-    if (!supabase) {
-      setError('Supabase não configurado')
-      setLoading(false)
+    if (registerError) {
+      setError(registerError)
       return
-    }
-
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          role: 'student',
-          full_name: fullName,
-          professional_id: profile.id,
-        },
-      },
-    })
-
-    if (signUpError) {
-      setError(signUpError.message)
-      setLoading(false)
-      return
-    }
-
-    if (data.user) {
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        role: 'student',
-        full_name: fullName,
-        professional_id: profile.id,
-      })
     }
 
     setSuccess(true)
-    setLoading(false)
   }
 
   if (success) {
