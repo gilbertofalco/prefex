@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+html {
+  font-size: 18px;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased min-h-screen;
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-indigo-500;
+}
