@@ -1,4 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { isDemoMode, getSupabase } from '../../lib/supabase'
 import {
   demoLogin,
@@ -10,6 +19,7 @@ import {
 import type { Profile } from '../../types/database'
 import type { User } from '@supabase/supabase-js'
 import { fetchOrCreateProfile, profileCreationErrorHint, translateAuthError } from '../../lib/ensureProfile'
+import { registerStudentInSupabase } from '../../lib/registerStudent'
 
 interface AuthContextValue {
   user: User | { id: string; email: string } | null
@@ -37,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | { id: string; email: string } | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const suspendAuthUpdates = useRef(false)
 
   const refreshProfile = useCallback(async () => {
     if (isDemoMode) {
@@ -76,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const supabase = getSupabase()
       if (supabase) {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          if (suspendAuthUpdates.current) return
           if (session?.user) {
             setUser(session.user)
             const p = await fetchOrCreateProfile(session.user)
@@ -172,56 +184,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const supabase = getSupabase()
-      if (!supabase) return { error: 'Supabase não configurado' }
-
-      const {
-        data: { session: professionalSession },
-      } = await supabase.auth.getSession()
-      if (!professionalSession) {
-        return { error: 'Sessão expirada. Faça login novamente como profissional.' }
+      if (!user || profile.role !== 'professional') {
+        return { error: 'Sessão do profissional inválida. Faça login novamente.' }
       }
 
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            role: 'student',
-            full_name: fullName,
-            professional_id: profile.id,
-          },
-        },
-      })
+      suspendAuthUpdates.current = true
+      try {
+        const result = await registerStudentInSupabase(
+          user as User,
+          profile,
+          email,
+          password,
+          fullName,
+        )
 
-      // signUp troca a sessão para o aluno — restaura o profissional imediatamente
-      const { error: restoreError } = await supabase.auth.setSession({
-        access_token: professionalSession.access_token,
-        refresh_token: professionalSession.refresh_token,
-      })
-
-      if (restoreError) {
-        return {
-          error: 'Aluno pode ter sido criado, mas sua sessão foi perdida. Faça login como profissional.',
+        if (result.restoreUser && result.restoreProfile) {
+          setUser(result.restoreUser)
+          setProfile(result.restoreProfile)
         }
+
+        return { error: result.error }
+      } finally {
+        suspendAuthUpdates.current = false
       }
-
-      await refreshProfile()
-
-      if (signUpError) return { error: translateAuthError(signUpError.message) }
-      if (!data.user) return { error: 'Não foi possível criar o aluno.' }
-
-      // Garante perfil do aluno (trigger pode já ter criado)
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        role: 'student',
-        full_name: fullName,
-        professional_id: profile.id,
-      })
-
-      return { error: null }
     },
-    [profile, refreshProfile],
+    [profile, user],
   )
 
   const signOut = useCallback(async () => {

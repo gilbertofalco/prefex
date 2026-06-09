@@ -51,7 +51,11 @@ No modo demo, todos os dados são salvos em `localStorage`.
    - **Projeto novo:** só `supabase/migrations/001_initial_schema.sql`
    - **Projeto com erros de login/perfil:** primeiro `supabase/reset_database.sql`, depois `001_initial_schema.sql`
 5. Em **Authentication → Providers → Email**, desligue **Confirm email**
-6. Reinicie o servidor de desenvolvimento
+6. (Recomendado) Deploy da Edge Function para cadastro de alunos sem trocar sessão:
+   ```bash
+   npx supabase functions deploy create-student --project-ref SEU_PROJECT_REF
+   ```
+7. Reinicie o servidor de desenvolvimento
 
 ## Scripts
 
