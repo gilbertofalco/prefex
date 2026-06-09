@@ -91,7 +91,7 @@ export async function fetchOrCreateProfile(user: User): Promise<Profile | null> 
 }
 
 export function profileCreationErrorHint(): string {
-  return 'Execute supabase/migrations/004_ensure_user_profile_rpc.sql no SQL Editor do Supabase.'
+  return 'Execute supabase/reset_database.sql e depois supabase/migrations/001_initial_schema.sql no SQL Editor.'
 }
 
 export function translateAuthError(message: string): string {

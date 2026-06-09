@@ -47,11 +47,11 @@ No modo demo, todos os dados são salvos em `localStorage`.
    cp .env.example .env
    ```
 3. Preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
-4. Execute a migration em **SQL Editor**:
-   ```
-   supabase/migrations/001_initial_schema.sql
-   ```
-5. Reinicie o servidor de desenvolvimento
+4. Execute no **SQL Editor** do Supabase:
+   - **Projeto novo:** só `supabase/migrations/001_initial_schema.sql`
+   - **Projeto com erros de login/perfil:** primeiro `supabase/reset_database.sql`, depois `001_initial_schema.sql`
+5. Em **Authentication → Providers → Email**, desligue **Confirm email**
+6. Reinicie o servidor de desenvolvimento
 
 ## Scripts
 
