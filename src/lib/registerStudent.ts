@@ -1,7 +1,7 @@
+import { createClient, type Session, type SupabaseClient, type User } from '@supabase/supabase-js'
 import { getSupabase, isDemoMode } from './supabase'
 import { translateAuthError } from './ensureProfile'
 import type { Profile } from '../types/database'
-import type { User } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const supabaseKey = (
@@ -13,6 +13,29 @@ export interface RegisterStudentResult {
   error: string | null
   restoreUser?: User
   restoreProfile?: Profile
+}
+
+function createEphemeralClient(): SupabaseClient | null {
+  if (!supabaseUrl || !supabaseKey) return null
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: 'prefex-ephemeral-auth',
+    },
+  })
+}
+
+async function restoreProfessionalSession(
+  supabase: SupabaseClient,
+  session: Pick<Session, 'access_token' | 'refresh_token'>,
+): Promise<string | null> {
+  const { error } = await supabase.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+  })
+  return error?.message ?? null
 }
 
 async function createStudentViaEdgeFunction(
@@ -125,6 +148,10 @@ export async function registerStudentInSupabase(
       const profileError = await ensureStudentProfile(edge.userId, fullName, professionalProfile.id)
       if (profileError) return { error: profileError }
     }
+    const restoreError = await restoreProfessionalSession(supabase, professionalSession)
+    if (restoreError) {
+      return { error: 'Aluno criado, mas a sessão do profissional foi perdida. Faça login novamente.' }
+    }
     return {
       error: null,
       restoreUser: professionalUser,
@@ -136,8 +163,11 @@ export async function registerStudentInSupabase(
     return { error: edge.error }
   }
 
-  // Fallback: signUp troca sessão — restaurar tokens do profissional em seguida
-  const { data, error: signUpError } = await supabase.auth.signUp({
+  // Fallback: cliente isolado para não sobrescrever a sessão do profissional no localStorage
+  const ephemeral = createEphemeralClient()
+  if (!ephemeral) return { error: 'Supabase não configurado' }
+
+  const { data, error: signUpError } = await ephemeral.auth.signUp({
     email,
     password,
     options: {
@@ -149,19 +179,15 @@ export async function registerStudentInSupabase(
     },
   })
 
-  const { error: restoreError } = await supabase.auth.setSession({
-    access_token: professionalSession.access_token,
-    refresh_token: professionalSession.refresh_token,
-  })
-
-  if (restoreError) {
-    return {
-      error: 'Aluno pode ter sido criado, mas sua sessão foi perdida. Faça login como profissional.',
-    }
-  }
-
   if (signUpError) return { error: translateAuthError(signUpError.message) }
   if (!data.user) return { error: 'Não foi possível criar o aluno.' }
+
+  const restoreError = await restoreProfessionalSession(supabase, professionalSession)
+  if (restoreError) {
+    return {
+      error: 'Aluno criado, mas a sessão do profissional foi perdida. Faça login novamente.',
+    }
+  }
 
   const profileError = await ensureStudentProfile(data.user.id, fullName, professionalProfile.id)
   if (profileError) return { error: profileError }

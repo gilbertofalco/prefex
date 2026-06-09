@@ -48,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const suspendAuthUpdates = useRef(false)
+  const lockedProfessionalId = useRef<string | null>(null)
 
   const refreshProfile = useCallback(async () => {
     if (isDemoMode) {
@@ -88,6 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (supabase) {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
           if (suspendAuthUpdates.current) return
+          if (
+            lockedProfessionalId.current &&
+            session?.user?.id !== lockedProfessionalId.current
+          ) {
+            return
+          }
           if (session?.user) {
             setUser(session.user)
             const p = await fetchOrCreateProfile(session.user)
@@ -188,6 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: 'Sessão do profissional inválida. Faça login novamente.' }
       }
 
+      lockedProfessionalId.current = profile.id
       suspendAuthUpdates.current = true
       try {
         const result = await registerStudentInSupabase(
@@ -198,14 +206,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           fullName,
         )
 
-        if (result.restoreUser && result.restoreProfile) {
+        if (!result.error && result.restoreUser && result.restoreProfile) {
           setUser(result.restoreUser)
           setProfile(result.restoreProfile)
         }
 
         return { error: result.error }
       } finally {
+        await new Promise((resolve) => setTimeout(resolve, 200))
         suspendAuthUpdates.current = false
+        lockedProfessionalId.current = null
       }
     },
     [profile, user],
