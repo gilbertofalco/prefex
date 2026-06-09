@@ -7,6 +7,7 @@ export function RegisterProfessionalPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const { signUpProfessional } = useAuth()
   const navigate = useNavigate()
@@ -14,11 +15,22 @@ export function RegisterProfessionalPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setSuccess(null)
     setLoading(true)
-    const { error: signUpError } = await signUpProfessional(email, password, fullName)
+    const { error: signUpError, pendingConfirmation } = await signUpProfessional(
+      email,
+      password,
+      fullName,
+    )
     setLoading(false)
     if (signUpError) {
       setError(signUpError)
+      return
+    }
+    if (pendingConfirmation) {
+      setSuccess(
+        'Conta criada com sucesso! Agora faça login com o e-mail e senha que você cadastrou.',
+      )
       return
     }
     navigate('/professional')
@@ -73,6 +85,18 @@ export function RegisterProfessionalPage() {
               className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3 text-lg"
             />
           </div>
+
+          {success && (
+            <div className="rounded-lg bg-green-50 px-4 py-3 text-green-800" role="status">
+              <p>{success}</p>
+              <Link
+                to="/login"
+                className="mt-2 inline-block font-semibold text-green-900 underline"
+              >
+                Ir para o login
+              </Link>
+            </div>
+          )}
 
           {error && (
             <p className="rounded-lg bg-red-50 px-4 py-2 text-red-700" role="alert">

@@ -16,7 +16,11 @@ interface AuthContextValue {
   loading: boolean
   isDemoMode: boolean
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
-  signUpProfessional: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>
+  signUpProfessional: (
+    email: string,
+    password: string,
+    fullName: string,
+  ) => Promise<{ error: string | null; pendingConfirmation?: boolean }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
@@ -124,14 +128,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       options: {
         data: { role: 'professional', full_name: fullName },
+        emailRedirectTo: `${window.location.origin}/login`,
       },
     })
     if (error) return { error: translateAuthError(error.message) }
-    if (data.user) {
-      setUser(data.user)
-      const p = await fetchOrCreateProfile(data.user)
-      setProfile(p)
-      if (!p) return { error: `Conta criada, mas o perfil falhou. ${profileCreationErrorHint()}` }
+    if (!data.user) return { error: 'Não foi possível criar a conta.' }
+
+    // Sem sessão = confirmação de e-mail ativa no Supabase.
+    // O trigger já criou o perfil; o usuário deve fazer login depois.
+    if (!data.session) {
+      return { error: null, pendingConfirmation: true }
+    }
+
+    setUser(data.user)
+    const p = await fetchOrCreateProfile(data.user)
+    setProfile(p)
+    if (!p) {
+      return {
+        error: `Conta criada, mas o perfil não foi encontrado. Tente fazer login. Se persistir: ${profileCreationErrorHint()}`,
+      }
     }
     return { error: null }
   }, [refreshProfile])
